@@ -24,7 +24,7 @@ poetry update
 ```
 
 ## Usage
-e.g. : basic experiment
+e.g. : basic experiment. You have to define the experiment parameters in the config.ini file and then pass it as an argument to the execution.
 ```bash
 poetry run python src/pymgridexperiments/pymgrid_experiment.py -s config.ini
 

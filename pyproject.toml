@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "pymgridexperiments"
+version = "0.1.0"
+description = ""
+authors = ["YANN BERTHELOT <yann.berthelot@capgemini.com>"]
+readme = "README.md"
+packages = [{include = "pymgridexperiments"}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+deeprlyb = "0.2.1"
+pep517 = "^0.12.0"
+osqp = {git = "https://github.com/osqp/osqp-python"}
+pymgrid = {git = "https://github.com/YannBerthelot/pymgrid", rev = "clean_slate"}
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "pypi_"
+url = "https://test.pypi.org/simple/"

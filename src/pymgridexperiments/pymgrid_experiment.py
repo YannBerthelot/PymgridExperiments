@@ -17,7 +17,7 @@ def pymgrid_experiment():
                 run = wandb.init(
                     project="Pymgrid test RBC",
                     entity="yann-berthelot",
-                    name=f'{config["GLOBAL"]["name"]} {experiment}/{config["N_EXPERIMENTS"]}',
+                    name=f'{config["GLOBAL"]["name"]} {experiment}/{config["GLOBAL"].getint("N_EXPERIMENTS")}',
                     reinit=True,
                     config=config_global,
                 )
@@ -35,7 +35,9 @@ def pymgrid_experiment():
                 run=run,
             )
             agent.run = run
-            agent.train(mg_env_train, config["GLOBAL"].getfloat("NB_TIMESTEPS_TRAIN"))
+            agent.train_TD0(
+                mg_env_train, config["GLOBAL"].getfloat("NB_TIMESTEPS_TRAIN")
+            )
             agent.env = mg_env_eval
             agent.load(f"baseline_pymgrid_{experiment}_best")
             agent.test(

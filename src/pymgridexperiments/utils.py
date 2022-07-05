@@ -1,4 +1,5 @@
 import os
+import wandb
 import pickle
 import random
 import numpy as np
@@ -6,7 +7,8 @@ import pandas as pd
 from copy import copy
 from pymgrid import MicrogridGenerator as m_gen
 from pymgrid.Environments.ScenarioEnvironment import CSPLAScenarioEnvironment
-from pymgrid.Environments.MacroEnvironment import MacroEnvironment
+from pymgrid.Environments.rule_based import RuleBaseControl, MacroEnvironment
+from torch.utils.tensorboard import SummaryWriter
 
 
 def get_microgrid(id=1, export_price_factor=0.0):
@@ -43,14 +45,52 @@ def get_train_env(year=0, export_price_factor=0):
     )
 
 
-def get_macro_environments(micropolicies):
-    mg = get_microgrid(id=1, export_price_factor=0)
+def get_macro_environments(micropolicies, export_price_factor=0, pv_factor=1):
+    mg = get_microgrid(id=1, export_price_factor=export_price_factor)
     mg_train = copy(mg)
     mg_test = copy(mg)
 
-    mg_env_train = MacroEnvironment({"microgrid": mg_train}, micropolicies)
-    mg_env_eval = MacroEnvironment({"microgrid": mg_test}, micropolicies)
-    print(fake_data["tsSample"][0][1][:, None])
+    mg_env_train = MacroEnvironment(
+        {"microgrid": mg_train}, micropolicies, pv_factor=pv_factor
+    )
+    mg_env_eval = MacroEnvironment(
+        {"microgrid": mg_test}, micropolicies, pv_factor=pv_factor
+    )
+    return mg_env_train, mg_env_eval
+
+
+def get_opposite_environments(
+    pv_factor=1.0, action_design="original", export_price_factor=0
+):
+    mg_plus = get_microgrid(id=1, export_price_factor=export_price_factor)
+    mg_min = get_microgrid(id=1, export_price_factor=-export_price_factor)
+    microgrids = []
+    for mg in (mg_plus, mg_min):
+        mg._data_set_to_use = "all"
+        mg.dataset_to_use_default = "all"
+        mg.TRAIN = False
+        mg_train = copy(mg)
+        mg_test = copy(mg)
+        microgrids.append({"train": mg_train, "test": mg_test})
+    LEN = 1000
+    # starts = list(range(0, 6759, 2000))
+    starts = [np.random.randint(8739 - LEN) for i in range(5000)]
+    # starts = [0]
+    mg_env_train = RuleBaseControl(
+        starts,
+        LEN,
+        {"microgrid": (microgrids[0]["train"], microgrids[1]["train"])},
+        customPVTs=fake_data["tsSample"][0][1][:, None],
+        customLoadTs=fake_data["tsSample"][0][0][:, None],
+        action_design=action_design,
+    )
+
+    mg_env_eval = RuleBaseControl(
+        [0],
+        8760,
+        {"microgrid": (microgrids[0]["test"], microgrids[1]["test"])},
+        action_design=action_design,
+    )
     return mg_env_train, mg_env_eval
 
 
@@ -61,26 +101,28 @@ def get_environments(pv_factor=1.0, action_design="original", export_price_facto
     mg.TRAIN = False
     mg_train = copy(mg)
     mg_test = copy(mg)
-    starts = list(range(0, 6759, 2000))
-    starts = [0]
-    mg_env_train = CSPLAScenarioEnvironment(
+    LEN = 1000
+    # starts = list(range(0, 6759, 2000))
+    starts = [np.random.randint(8739 - LEN) for i in range(5000)]
+    # starts = [0]
+    mg_env_train = RuleBaseControl(
         starts,
-        8760,
+        LEN,
         {"microgrid": mg_train},
-        # customPVTs=fake_data["tsSample"][0][1][:, None],
-        # customLoadTs=fake_data["tsSample"][0][0][:, None],
+        customPVTs=fake_data["tsSample"][0][1][:, None],
+        customLoadTs=fake_data["tsSample"][0][0][:, None],
         action_design=action_design,
     )
 
-    mg_env_eval = CSPLAScenarioEnvironment(
+    mg_env_eval = RuleBaseControl(
         [0],
         8760,
         {"microgrid": mg_test},
         # customPVTs=fake_data["tsSample"][0][1][:, None],
         # customLoadTs=fake_data["tsSample"][0][0][:, None],
         action_design=action_design,
+        pv_factor=pv_factor,
     )
-    print(fake_data["tsSample"][0][1][:, None])
     return mg_env_train, mg_env_eval
 
 
@@ -106,7 +148,6 @@ def get_environments_for_cluster(
 
     # Get the whole starts list for the current cluster
     starts_cluster = starts[cluster_ids == cluster]
-    print(starts)
     # Split the starts list between train and test
     train_starts, test_starts = train_test_split(starts_cluster, seed=42)
     mg_env_train = CSPLAScenarioEnvironment(
@@ -149,3 +190,27 @@ def train_test_split(list_in, ratio=0.7, seed=None):
     train = list_in[:split_idx]
     test = list_in[split_idx:]
     return train, test
+
+
+LOG_DIR = "./logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+writer = SummaryWriter(log_dir=LOG_DIR)
+
+
+def log_timestep(reward, timestep, out: str):
+    if out.lower() == "wandb":
+        wandb.log({"Test/reward": reward}, step=timestep)
+    elif out.lower() == "tensorboard":
+        writer.add_scalar("Test/reward", reward, timestep)
+    else:
+        raise ValueError(f"Unrecognized output for logging : {out}")
+
+
+def log_episode(reward_sum, out: str):
+    if out.lower() == "wandb":
+        wandb.log({"Test/reward_sum": reward_sum}, step=1)
+    elif out.lower() == "tensorboard":
+        print("LOGGING SUM")
+        writer.add_scalar("Test/reward_sum", reward_sum, 1)
+    else:
+        raise ValueError(f"Unrecognized output for logging : {out}")
